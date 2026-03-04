@@ -1,101 +1,81 @@
-# Proofreader — Self-Hosted Deployment
+# Proofreader
 
-Your n8n workflow migrated to Python (FastAPI) + your existing HTML frontend.
+An AI-powered proofreading tool for coding questions. Paste or upload a question and get back a categorized error report (grammar and technical mistakes) alongside a fully corrected, properly formatted version — ready to publish.
+
+---
+
+## What it does
+
+1. **Validates** the question against a strict style and formatting guide — catching grammar mistakes, structural issues, missing sections, incorrect headers, and formatting violations
+2. **Fixes** only the reported errors, leaving everything else exactly as-is
+3. **Returns** three outputs: grammar mistakes, technical mistakes, and the corrected question
+
+---
+
+## Tech stack
+
+- **Frontend:** Vanilla HTML/CSS/JS with Markdown rendering
+- **Backend:** Python (FastAPI)
+- **AI:** Groq API — one model call for validation, one for fixing
+- **Hosting:** Railway
+
+---
 
 ## File structure
 
 ```
 proofreader/
-├── main.py            ← FastAPI backend (full pipeline)
+├── main.py            ← FastAPI backend
 ├── requirements.txt
 ├── railway.toml       ← Railway config
 ├── Procfile           ← Render config
 └── static/
-    └── index.html     ← Your existing frontend (URLs already updated)
+    └── index.html     ← Frontend
 ```
 
 ---
 
-## Deploy to Railway (recommended — ~15 min)
+## Setup
 
-1. **Push to GitHub**
-   ```bash
-   git init
-   git add .
-   git commit -m "initial"
-   gh repo create proofreader --public --push   # or use GitHub web UI
-   ```
+### Environment variables
 
-2. **Create Railway project**
-   - Go to [railway.app](https://railway.app) → New Project → Deploy from GitHub repo
-   - Select your repo
+```
+GROQ_API_KEY_VALIDATOR   ←  Groq key used for the validation step
+GROQ_API_KEY_FIXER       ←  Groq key used for the fixing step
+```
 
-3. **Add environment variables**
-   - In Railway dashboard → Variables tab → Add:
-     ```
-     GROQ_API_KEY_VALIDATOR = your_validator_groq_key
-     GROQ_API_KEY_FIXER     = your_fixer_groq_key
-     ```
+Get your keys at [console.groq.com](https://console.groq.com).
 
-4. **Deploy** — Railway auto-detects Python and deploys.  
-   Your app will be live at `https://your-app.up.railway.app`
-
----
-
-## Deploy to Render (alternative)
-
-1. Push to GitHub (same as above)
-2. Go to [render.com](https://render.com) → New → Web Service → Connect repo
-3. Set:
-   - **Build command:** `pip install -r requirements.txt`
-   - **Start command:** `uvicorn main:app --host 0.0.0.0 --port $PORT`
-4. Add environment variable: `GROQ_API_KEY = your_key`
-5. Deploy
-
----
-
-## Run locally (for testing)
+### Run locally
 
 ```bash
-# Install dependencies
 pip install -r requirements.txt
 
-# Set your Groq keys
 export GROQ_API_KEY_VALIDATOR="your_validator_key"
 export GROQ_API_KEY_FIXER="your_fixer_key"
 
-# Start the server
 uvicorn main:app --reload --port 8000
 ```
 
-Open `http://localhost:8000` — your full app runs locally.
+Open `http://localhost:8000`.
 
 ---
 
-## Getting your Groq API key
+## Model
 
-1. Go to [console.groq.com](https://console.groq.com)
-2. Sign in → API Keys → Create API Key
-3. Copy and paste into the `GROQ_API_KEY` environment variable
-
----
-
-## Model used
-
-The app uses `llama-3.3-70b-versatile` by default (publicly available on Groq).  
-If you have access to `openai/gpt-oss-120b` on Groq, update the `MODEL` constant in `main.py`:
+Defaults to `llama-3.3-70b-versatile`. To change it, update the `MODEL` constant in `main.py`:
 
 ```python
-MODEL = "openai/gpt-oss-120b"
+MODEL = "your-preferred-groq-model"
 ```
 
 ---
 
-## API endpoints
+## API
 
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/proofread` | JSON body: `{ "question": "..." }` |
-| POST | `/proofread-file` | Multipart file upload (UTF-8 .txt) |
+| POST | `/proofread-file` | Multipart file upload (UTF-8 .txt, max 2 MB) |
 | GET | `/health` | Health check |
 | GET | `/` | Frontend UI |
