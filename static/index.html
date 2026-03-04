@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Proofreader Utility</title>
+
+  <!-- DOMPurify for safe HTML rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js" defer></script>
+  <!-- Marked.js for markdown parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js" defer></script>
+
+  <style>
+    :root{
+      --bg:#f8fafc; --card:#ffffff; --muted:#64748b; --text:#0f172a; --accent:#2563eb; --accent-2:#059669; --danger:#dc2626;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font:16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      color:var(--text); background:linear-gradient(180deg,#f1f5f9,#f8fafc 200px,#ffffff);
+    }
+    .container{
+      max-width:980px; margin:48px auto; padding:0 16px;
+    }
+    .card{
+      background:var(--card); border:1px solid #e2e8f0; border-radius:16px; box-shadow:0 4px 12px rgba(0,0,0,.08);
+      overflow:hidden;
+    }
+    header{
+      padding:20px 24px; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    }
+    header h1{font-size:20px; margin:0; letter-spacing:.2px; color:#0f172a;}
+    .chip{
+      font-size:12px; padding:4px 8px; border-radius:999px; background:#f1f5f9; color:var(--muted); border:1px solid #cbd5e1;
+    }
+
+    /* Input mode toggle */
+    .mode-switch{
+      display:flex; gap:8px; margin-left:auto; flex-wrap:wrap;
+    }
+    .seg{
+      display:inline-flex; border:1px solid #cbd5e1; border-radius:12px; overflow:hidden;
+    }
+    .seg button{
+      appearance:none; background:transparent; color:var(--muted); padding:8px 12px; border:0; cursor:pointer; font-weight:600;
+    }
+    .seg button.active{ background:#f1f5f9; color:var(--text); }
+
+    /* Panels */
+    .panels{ display:grid; grid-template-columns:1fr; }
+    .panel{ display:none; padding:16px 16px 0 16px; }
+    .panel.active{ display:block; }
+
+    /* Contenteditable input */
+    .label{
+      display:block; color:var(--muted); font-size:13px; margin:0 0 8px 4px;
+    }
+    .editor{
+      border:1px solid #cbd5e1;
+      background:#ffffff;
+      border-radius:12px;
+      padding:14px;
+      min-height:180px;
+      outline:none;
+      resize:vertical;
+      width:100%;
+      color:var(--text);
+      font-family:monospace;
+      font-size:15px;
+      line-height:1.5;
+    }
+    .editor:focus{
+      border-color:var(--accent);
+      box-shadow:0 0 0 3px rgba(37,99,235,.1);
+    }
+    .editor::placeholder{
+      color:#94a3b8;
+    }
+
+    .note{ color:#64748b; font-size:13px; margin-top:8px }
+
+    /* File input */
+    .filebox{
+      border:1px dashed #cbd5e1; border-radius:12px; padding:16px; background:#f8fafc;
+    }
+    input[type="file"]{ width:100%; color:var(--muted); }
+
+    /* Actions */
+    .actions{
+      display:flex; gap:12px; padding:16px; border-top:1px solid #e2e8f0; flex-wrap:wrap;
+    }
+    .btn{
+      appearance:none; border:1px solid #cbd5e1; background:#ffffff; color:var(--text);
+      padding:10px 14px; border-radius:10px; font-weight:700; cursor:pointer;
+      transition: all 0.2s;
+    }
+    .btn:hover{ background:#f8fafc; }
+    .btn.primary{ background:linear-gradient(180deg,#3b82f6,#2563eb); border-color:#1d4ed8; color:#ffffff; }
+    .btn.primary:hover{ background:linear-gradient(180deg,#2563eb,#1d4ed8); }
+    .btn.success{ background:linear-gradient(180deg,#10b981,#059669); border-color:#047857; color:#ffffff; }
+    .btn.success:hover{ background:linear-gradient(180deg,#059669,#047857); }
+    .btn:disabled{ opacity:.5; cursor:not-allowed; }
+
+    /* Status/Loader */
+    .status{ margin-left:auto; display:flex; align-items:center; gap:8px; color:var(--muted); font-size:13px }
+    .spinner{
+      width:16px; height:16px; border:2px solid #e2e8f0; border-top-color:var(--accent); border-radius:50%;
+      animation:spin .9s linear infinite; display:none;
+    }
+    .spinner.show{ display:inline-block; }
+    @keyframes spin{ to { transform:rotate(360deg); } }
+
+    /* Tabs for results */
+    .results{ border-top:1px solid #e2e8f0; }
+    .tabs{
+      display:flex; gap:8px; padding:12px 12px 0 12px; border-bottom:1px solid #e2e8f0;
+    }
+    .tabs [role="tab"]{
+      appearance:none; border:0; background:transparent; color:var(--muted);
+      padding:10px 12px; border-radius:10px; cursor:pointer; font-weight:700;
+    }
+    .tabs [role="tab"].active{ background:#f1f5f9; color:var(--text); border:1px solid #cbd5e1; }
+    .outwrap{ padding:12px; }
+    .output-section{ display:none; }
+    .output-section.active{ display:block; }
+    .out{
+      background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px;
+      word-break:break-word; min-height:120px; line-height:1.6;
+    }
+
+    /* Markdown styling for output */
+    .out h1, .out h2, .out h3 { 
+      color: #0f172a; 
+      margin-top: 1em; 
+      margin-bottom: 0.5em;
+      font-weight: 700;
+    }
+    .out h1 { font-size: 1.5em; }
+    .out h2 { font-size: 1.3em; }
+    .out h3 { font-size: 1.1em; }
+    .out p { margin: 0.5em 0; }
+    .out strong { 
+  	color: #000000; 
+  	font-weight: 700; 
+  	text-decoration: underline;
+	}
+    .out em { color: #475569; font-style: italic; }
+    .out code { 
+      background: #e0e7ff; 
+      color: #3730a3;
+      padding: 2px 6px; 
+      border-radius: 4px; 
+      font-family: monospace;
+      font-size: 0.9em;
+    }
+    .out pre {
+      background: #1e293b;
+      color: #e2e8f0;
+      padding: 12px;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin: 1em 0;
+    }
+    .out pre code {
+      background: transparent;
+      padding: 0;
+      color: #e2e8f0;
+    }
+    .out ul, .out ol {
+      margin: 0.5em 0;
+      padding-left: 2em;
+    }
+    .out li {
+      margin: 0.25em 0;
+    }
+    .out blockquote {
+      border-left: 3px solid var(--accent);
+      margin: 1em 0;
+      padding-left: 1em;
+      color: var(--muted);
+    }
+
+    /* Inline alerts */
+    .alert{
+      margin:10px 0 0; padding:10px 12px; border-radius:10px; font-size:14px;
+      background:#fef2f2; border:1px solid #fecaca; color:#991b1b;
+    }
+
+    @media (max-width:560px){
+      header{ gap:8px }
+      .status{ width:100%; margin:8px 0 0 0; justify-content:flex-start; }
+    }
+
+    .out p:has(> strong:first-child) {
+      margin-top: 0.8em;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <header>
+        <h1>Proofreader Utility</h1>
+        <span class="chip">Markdown support enabled</span>
+
+        <div class="mode-switch" aria-label="Input mode">
+          <div class="seg" role="tablist" aria-label="Input Mode">
+            <button type="button" class="active" data-mode="text" aria-selected="true" role="tab">Type / Paste</button>
+            <button type="button" data-mode="file" aria-selected="false" role="tab">Upload File</button>
+          </div>
+        </div>
+
+        <div class="status" id="statusArea">
+          <div class="spinner" id="spinner" aria-hidden="true"></div>
+          <span id="statusMsg">Idle</span>
+        </div>
+      </header>
+
+      <div class="panels">
+        <!-- Text / paste panel -->
+        <section class="panel active" id="panel-text" aria-labelledby="text-mode-tab">
+          <label class="label" id="editorLabel" for="inputEditor">Enter text to proofread</label>
+          <textarea id="inputEditor"
+          class="editor"
+          aria-labelledby="editorLabel"
+          placeholder="Paste your code or text here…"
+          spellcheck="false"></textarea>
+          <p class="note">Tip: Paste your text and the output will be formatted with markdown support.</p>
+          <div id="textPanelAlert" class="alert" style="display:none"></div>
+        </section>
+
+        <!-- File upload panel -->
+        <section class="panel" id="panel-file" aria-labelledby="file-mode-tab">
+          <div class="filebox">
+            <label class="label" for="fileInput">Upload a file to proofread</label>
+            <input id="fileInput" type="file"
+                   accept=".txt" />
+            <p class="note">Max 2 MB. Accepted: .txt</p>
+          </div>
+          <div id="filePanelAlert" class="alert" style="display:none"></div>
+        </section>
+      </div>
+
+      <div class="actions">
+        <button class="btn primary" id="runBtn">Proofread</button>
+        <button class="btn" id="clearBtn">Clear</button>
+        <button class="btn success" id="downloadBtn" disabled>Download Results (.html)</button>
+      </div>
+
+      <section class="results" aria-label="Results">
+        <div class="tabs" role="tablist" aria-label="Results Tabs">
+          <button type="button" role="tab" class="active" aria-selected="true" aria-controls="grammar" data-tab="grammar">Grammar</button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="technical" data-tab="technical">Technical</button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="corrected" data-tab="corrected">Corrected</button>
+        </div>
+        <div class="outwrap">
+          <div id="grammar" class="output-section active">
+            <div class="out" id="grammarOut" aria-live="polite"></div>
+          </div>
+          <div id="technical" class="output-section">
+            <div class="out" id="technicalOut" aria-live="polite"></div>
+          </div>
+          <div id="corrected" class="output-section">
+            <div class="out" id="correctedOut" aria-live="polite"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    // ========================
+    // Config: API endpoints
+    // ========================
+    const API_URL_TEXT = '/proofread';
+    const API_URL_FILE = '/proofread-file';
+    const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
+
+    const $ = sel => document.querySelector(sel);
+    const $$ = sel => Array.from(document.querySelectorAll(sel));
+
+    function setStatus(message, loading=false){
+      $('#statusMsg').textContent = message;
+      $('#spinner').classList.toggle('show', loading);
+      $('#spinner').setAttribute('aria-hidden', loading ? 'false' : 'true');
+    }
+
+    function showAlert(where, msg){
+      const el = where === 'file' ? $('#filePanelAlert') : $('#textPanelAlert');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+    function clearAlerts(){
+      $('#filePanelAlert').style.display = 'none';
+      $('#textPanelAlert').style.display = 'none';
+    }
+
+    // Convert markdown to HTML and sanitize
+    function parseMarkdown(text) {
+      if (!text) return '';
+      
+      // Replace literal \n with actual newlines
+      // After converting literal \\n → \n, convert single newlines to hard line breaks
+      text = text.replace(/([^\n])\n([^\n])/g, '$1  \n$2');
+      text = text.replace(/\n([^\n])/g, '  \n$1'); // catch newlines after \n too
+      
+      // Use marked.js to parse markdown
+      if (typeof marked !== 'undefined') {
+        const html = marked.parse(text);
+        return DOMPurify.sanitize(html, {
+          ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'u', 'br', 'p', 'ul', 'ol', 'li', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'hr', 'span', 'div'],
+          ALLOWED_ATTR: ['class']
+        });
+      }
+      
+      // Fallback: simple markdown parsing if marked.js not loaded yet
+      return simpleMarkdownParse(text);
+    }
+
+    // Simple fallback markdown parser
+    function simpleMarkdownParse(text) {
+      // Replace bold **text** or __text__
+      text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      text = text.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+      
+      // Replace italic *text* or _text_
+      text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+      text = text.replace(/_([^_]+)_/g, '<em>$1</em>');
+      
+      // Replace newlines with <br>
+      text = text.replace(/\n/g, '<br>');
+      
+      // Replace code blocks ```code```
+      text = text.replace(/```([^`]+)```/g, '<pre><code>$1</code></pre>');
+      
+      // Replace inline code `code`
+      text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+      
+      return DOMPurify.sanitize(text, {
+        ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'u', 'br', 'p', 'code', 'pre', 'span'],
+        ALLOWED_ATTR: []
+      });
+    }
+
+    function enableRunUI(enabled){
+      $('#runBtn').disabled = !enabled;
+      $('#downloadBtn').disabled = !enabled || !window.__lastResultsAvailable;
+    }
+
+    function setResults({ grammarMistakes, technicalMistakes, formattedQuestion }){
+      $('#grammarOut').innerHTML   = parseMarkdown(grammarMistakes);
+      $('#technicalOut').innerHTML = parseMarkdown(technicalMistakes);
+      $('#correctedOut').innerHTML = parseMarkdown(formattedQuestion);
+
+      // Mark results available for download
+      window.__lastResultsAvailable = Boolean(grammarMistakes || technicalMistakes || formattedQuestion);
+      $('#downloadBtn').disabled = !window.__lastResultsAvailable;
+    }
+
+    function clearResults(){
+      $('#grammarOut').textContent = '';
+      $('#technicalOut').textContent = '';
+      $('#correctedOut').textContent = '';
+      window.__lastResultsAvailable = false;
+      $('#downloadBtn').disabled = true;
+    }
+
+    // ========================
+    // Tabs
+    // ========================
+    $$('.tabs [role="tab"]').forEach(btn=>{
+      btn.addEventListener('click', () => {
+        $$('.tabs [role="tab"]').forEach(b=>{
+          b.classList.toggle('active', b===btn);
+          b.setAttribute('aria-selected', b===btn ? 'true' : 'false');
+        });
+        $$('.output-section').forEach(sec=>{
+          sec.classList.toggle('active', sec.id === btn.dataset.tab);
+        });
+      });
+    });
+
+    // ========================
+    // Input mode switching
+    // ========================
+    const modeButtons = $$('.seg button');
+    function setMode(mode){
+      modeButtons.forEach(b=>{
+        const isActive = b.dataset.mode === mode;
+        b.classList.toggle('active', isActive);
+        b.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+      $('#panel-text').classList.toggle('active', mode === 'text');
+      $('#panel-file').classList.toggle('active', mode === 'file');
+      clearAlerts();
+      setStatus('Idle');
+    }
+    modeButtons.forEach(b=>{
+      b.addEventListener('click', () => setMode(b.dataset.mode));
+    });
+
+    // ========================
+    // Proofread flow
+    // ========================
+    let abortCtrl = null;
+
+    async function fetchProofreadResults(){
+      if (abortCtrl) abortCtrl.abort();
+      abortCtrl = new AbortController();
+      clearAlerts();
+      setStatus('Processing…', true);
+      enableRunUI(false);
+
+      const activeMode = modeButtons.find(b => b.classList.contains('active')).dataset.mode;
+
+      try{
+        let resp;
+        if (activeMode === 'text'){
+          const text = $('#inputEditor').value.trim();
+          if (!text){
+            showAlert('text', 'Please enter some text first.');
+            setStatus('Awaiting input'); return;
+          }
+          resp = await fetch(API_URL_TEXT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question: text }),
+            signal: abortCtrl.signal
+          });
+        }else{
+          const file = $('#fileInput').files[0];
+          if (!file){
+            showAlert('file', 'Please choose a file to upload.');
+            setStatus('Awaiting file'); return;
+          }
+          if (file.size > MAX_FILE_SIZE){
+            showAlert('file', `File is too large. Max ${Math.round(MAX_FILE_SIZE/1024/1024)} MB.`);
+            setStatus('File too large'); return;
+          }
+          const fd = new FormData();
+          fd.append('file', file);
+          resp = await fetch(API_URL_FILE, { method: 'POST', body: fd, signal: abortCtrl.signal });
+        }
+
+        if (!resp.ok){
+          const text = await resp.text().catch(()=> '');
+          throw new Error(`HTTP ${resp.status} — ${text.slice(0,200)}`);
+        }
+
+        let data = await resp.json();
+        if (Array.isArray(data)) data = data[0] || {};
+
+        const grammarMistakes   = data.grammarMistakes ?? '';
+        const technicalMistakes = data.technicalMistakes ?? '';
+        const formattedQuestion = data.formattedQuestion ?? '';
+
+        setResults({ grammarMistakes, technicalMistakes, formattedQuestion });
+        setStatus('Done');
+      }catch(err){
+        console.error(err);
+        showAlert(activeMode, `Request failed: ${err.message}`);
+        setStatus('Failed');
+        clearResults();
+      }finally{
+        enableRunUI(true);
+        $('#spinner').classList.remove('show');
+      }
+    }
+
+    // ========================
+    // Download results (.html)
+    // ========================
+    function downloadResults(){
+      const grammar   = $('#grammarOut').innerHTML;
+      const technical = $('#technicalOut').innerHTML;
+      const corrected = $('#correctedOut').innerHTML;
+
+      const html = `<!doctype html>
+<html><head><meta charset="utf-8"><title>Proofreading Results</title>
+<style>
+  body{font:16px/1.6 system-ui;margin:24px;color:#0b1220; background:#fff;} 
+  h2{margin:24px 0 12px; color:#1e40af; border-bottom: 2px solid #3b82f6; padding-bottom:4px;} 
+  .box{border:1px solid #cbd5e1;border-radius:8px;padding:16px;background:#f8fafc;margin-bottom:24px;line-height:1.6;}
+  .box strong{color:#1d4ed8; font-weight:700;}
+  .box em{color:#059669; font-style:italic;}
+  .box code{background:#e0e7ff; padding:2px 6px; border-radius:4px; font-family:monospace; font-size:0.9em;}
+  .box pre{background:#1e293b; color:#e2e8f0; padding:12px; border-radius:6px; overflow-x:auto;}
+  .box pre code{background:transparent; color:inherit;}
+</style>
+</head><body>
+  <h1 style="color:#1e40af;">Proofreading Results</h1>
+  <h2>Grammar Mistakes</h2>
+  <div class="box">${grammar}</div>
+  <h2>Technical Mistakes</h2>
+  <div class="box">${technical}</div>
+  <h2>Corrected Version</h2>
+  <div class="box">${corrected}</div>
+</body></html>`;
+
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'proofreading_results.html';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    // ========================
+    // Clear
+    // ========================
+    function clearAll(){
+      $('#inputEditor').value = '';
+      $('#fileInput').value = '';
+      clearAlerts();
+      clearResults();
+      setStatus('Cleared');
+    }
+
+    // ========================
+    // Wire up buttons
+    // ========================
+    $('#runBtn').addEventListener('click', fetchProofreadResults);
+    $('#clearBtn').addEventListener('click', clearAll);
+    $('#downloadBtn').addEventListener('click', downloadResults);
+
+    // Enter to run (text mode only)
+    $('#inputEditor').addEventListener('keydown', (e)=>{
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)){
+        e.preventDefault(); fetchProofreadResults();
+      }
+    });
+    
+    // Initial state
+    clearResults();
+  </script>
+</body>
+</html>
