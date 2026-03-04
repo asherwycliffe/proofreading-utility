@@ -27,7 +27,7 @@ app.add_middleware(
 
 GROQ_API_KEY_VALIDATOR = os.environ.get("GROQ_API_KEY_VALIDATOR", "")
 GROQ_API_KEY_FIXER     = os.environ.get("GROQ_API_KEY_FIXER", "")
-MODEL = "llama-3.3-70b-versatile"   # closest publicly available Groq model
+MODEL = "openai/gpt-oss-120b"   # closest publicly available Groq model
                                      # swap to any Groq model you have access to
 
 client_validator = Groq(api_key=GROQ_API_KEY_VALIDATOR)
